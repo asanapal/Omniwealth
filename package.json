@@ -1,0 +1,1 @@
+{"dependencies":{"axios":"^1.7.2","dotenv":"^16.4.5","express":"^4.19.2"},"description":"Secure multi-asset portfolio aggregator connector for the Meta Muse Connector Platform","engines":{"node":">=18"},"license":"UNLICENSED","main":"server.js","name":"omniwealth-muse-connector","scripts":{"start":"node server.js"},"version":"1.0.0"}

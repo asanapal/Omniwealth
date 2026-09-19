@@ -1,0 +1,116 @@
+openapi: 3.0.3
+info:
+  title: OmniWealth Portfolio Aggregator
+  version: 1.0.0
+  description: Securely aggregate traditional and alternative investment
+    portfolios for Meta Muse. All endpoints require a Bearer token.
+servers:
+  - url: https://api.omniwealth-connector.com/v1
+paths:
+  /portfolio/summary:
+    get:
+      summary: Get total net worth and asset class breakdown
+      description: Returns an aggregated summary of all linked accounts.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful portfolio aggregation
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total_net_worth, currency, allocations, plan,
+                           accounts_included, accounts_excluded]
+                properties:
+                  total_net_worth:
+                    type: number
+                    example: 195000.5
+                  currency:
+                    type: string
+                    example: USD
+                  allocations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Allocation'
+                  plan:
+                    type: string
+                    enum: [free, paid]
+                  accounts_included:
+                    type: integer
+                    example: 2
+                  accounts_excluded:
+                    type: integer
+                    example: 1
+                  upgrade_available:
+                    type: boolean
+        '401':
+          description: Missing or invalid bearer token
+  /portfolio/drift:
+    get:
+      summary: Check portfolio allocation drift
+      description: Compares current asset weights against target allocations
+        and returns rebalancing recommendations when drift exceeds 5%.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Drift analysis report
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total_net_worth, plan, rebalance_needed, recommendations]
+                properties:
+                  total_net_worth:
+                    type: number
+                  plan:
+                    type: string
+                    enum: [free, paid]
+                  rebalance_needed:
+                    type: boolean
+                  drift_threshold_percentage:
+                    type: number
+                    example: 5
+                  recommendations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Recommendation'
+        '401':
+          description: Missing or invalid bearer token
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Connector API token issued at setup.
+  schemas:
+    Allocation:
+      type: object
+      required: [asset_class, value, percentage]
+      properties:
+        asset_class:
+          type: string
+        value:
+          type: number
+        percentage:
+          type: number
+    Recommendation:
+      type: object
+      required: [asset_class, action, amount, current_percentage, target_percentage, drift_percentage]
+      properties:
+        asset_class:
+          type: string
+        action:
+          type: string
+          enum: [buy, sell]
+        amount:
+          type: number
+        current_percentage:
+          type: number
+        target_percentage:
+          type: number
+        drift_percentage:
+          type: number
+security:
+  - BearerAuth: []
