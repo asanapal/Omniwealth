@@ -62,12 +62,20 @@ Connector Platform's Stripe integration — this server just reads `PLAN`
 3. Copy the public domain Railway assigns you.
 4. Update `openapi.yaml` `servers[0].url` the same way.
 
-## Submit to Meta
+## Connect from Meta Muse
 
-1. Go to [muse.ai/platform](https://muse.ai/platform) → describe your product.
-2. Paste your public endpoint and upload `openapi.yaml`.
-3. Complete Meta's functional / security / legal review.
-4. Link your Stripe account (via Link) for monetization.
+As of September 2026 Meta has no public submission portal for third-party
+connectors. Distribution works through **custom connectors**: any Muse user
+asks their Muse to connect, hands it the API docs, and Muse builds the
+integration itself (Meta Help Center → "Custom connectors").
+
+To connect: paste `CONNECTOR_BRIEF.md` into Muse, provide the
+`CONNECTOR_API_TOKEN` when asked, and Muse stores it in its Secure
+Credentials Store and saves the integration as a skill.
+
+If Meta opens a connector directory submission process later, the submission
+package is: the live base URL (`openapi.yaml` `servers[0].url`), the
+`openapi.yaml` spec, and this README.
 
 ## Before publishing
 
