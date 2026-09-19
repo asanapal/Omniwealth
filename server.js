@@ -177,6 +177,17 @@ app.get("/v1/portfolio/drift", verifyToken, (req, res) => {
 // Health check (unauthenticated by design)
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
+// Service info landing (unauthenticated by design)
+app.get("/", (req, res) =>
+  res.json({
+    service: "OmniWealth Portfolio Aggregator",
+    version: "1.0.0",
+    status: "ok",
+    docs: "See openapi.yaml in the asanapal/Omniwealth repo",
+    endpoints: ["/health", "/v1/portfolio/summary", "/v1/portfolio/drift"],
+  })
+);
+
 app.listen(PORT, () => {
   console.log(`OmniWealth Connector running on port ${PORT}`);
 });
