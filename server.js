@@ -177,6 +177,79 @@ app.get("/v1/portfolio/drift", verifyToken, (req, res) => {
 // Health check (unauthenticated by design)
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
+// Terms of service (unauthenticated by design)
+app.get("/terms", (req, res) => {
+  res.type("html").send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OmniWealth — Terms of Service</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;line-height:1.6">
+<h1>OmniWealth Terms of Service</h1>
+<p><strong>Effective date:</strong> September 19, 2026</p>
+<h2>1. The service</h2>
+<p>OmniWealth is a portfolio aggregation connector for the Meta Muse platform. It summarizes
+portfolio values across linked accounts and analyzes drift from target allocations.</p>
+<h2>2. Plans and billing</h2>
+<p><strong>Free plan:</strong> aggregates up to 2 linked accounts. <strong>Paid plan:</strong>
+aggregates all linked accounts. Paid billing, where offered, is processed through the Muse
+platform's payment rails (Stripe Link); we do not store your payment credentials.</p>
+<h2>3. Your responsibilities</h2>
+<p>You are responsible for keeping your API credentials confidential and for the accuracy of
+accounts you link. You must have the right to share any account data you connect.</p>
+<h2>4. Acceptable use</h2>
+<p>Do not abuse, reverse-engineer, or attempt to disrupt the service. We may suspend access
+for misuse or security reasons.</p>
+<h2>5. No financial advice</h2>
+<p>Allocation and rebalance outputs are informational only and are not investment advice.
+Consult a licensed advisor before making investment decisions.</p>
+<h2>6. Availability and liability</h2>
+<p>The service is provided "as is" without warranties. To the maximum extent permitted by law,
+we are not liable for indirect or consequential damages. The service may be modified or
+discontinued at any time.</p>
+<h2>7. Contact</h2>
+<p>Questions: open an issue at <a href="https://github.com/asanapal/Omniwealth">github.com/asanapal/Omniwealth</a>.</p>
+<h2>8. Changes</h2>
+<p>We will update this page if these terms change; the effective date above will be revised.
+Continued use after changes constitutes acceptance.</p>
+</body></html>`);
+});
+
+// Privacy policy (unauthenticated by design)
+app.get("/privacy", (req, res) => {
+  res.type("html").send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OmniWealth — Privacy Policy</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;line-height:1.6">
+<h1>OmniWealth Privacy Policy</h1>
+<p><strong>Effective date:</strong> September 19, 2026</p>
+<p>OmniWealth ("we") is a portfolio aggregation connector for the Meta Muse platform.
+This policy explains what data the connector handles.</p>
+<h2>Data we process</h2>
+<ul>
+<li><strong>Portfolio data</strong> — account names, asset classes, and balances you link,
+used solely to compute portfolio summaries and allocation-drift analysis you request.</li>
+<li><strong>Authentication tokens</strong> — bearer tokens used to authorize API requests.
+Tokens are stored in secure server environment variables and in Muse's Secure Credentials Store; they are never logged or exposed.</li>
+</ul>
+<h2>How we use data</h2>
+<p>Data is used only to fulfill your requests (net-worth summaries, allocation breakdowns,
+rebalance recommendations). We do not sell, rent, or share your personal or financial data
+with third parties for marketing.</p>
+<h2>Third parties</h2>
+<ul><li>Hosting infrastructure (Render) processes requests on our behalf.</li>
+<li>The Meta Muse platform relays your requests and stores credentials you provide in its Secure Credentials Store under Meta's own terms.</li></ul>
+<h2>Data retention</h2>
+<p>The connector keeps no persistent copy of your portfolio data; aggregations are computed
+in memory per request. Logs contain no tokens or account identifiers.</p>
+<h2>Your choices</h2>
+<p>Disconnecting the connector in Muse settings immediately stops all data exchange.
+You may request deletion of any data we hold by contacting us.</p>
+<h2>Contact</h2>
+<p>Questions: open an issue at <a href="https://github.com/asanapal/Omniwealth">github.com/asanapal/Omniwealth</a>.</p>
+<h2>Changes</h2>
+<p>We will update this page if the policy changes; the effective date above will be revised.</p>
+</body></html>`);
+});
+
 // Service info landing (unauthenticated by design)
 app.get("/", (req, res) =>
   res.json({
