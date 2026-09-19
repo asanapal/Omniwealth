@@ -5,7 +5,7 @@ info:
   description: Securely aggregate traditional and alternative investment
     portfolios for Meta Muse. All endpoints require a Bearer token.
 servers:
-  - url: https://api.omniwealth-connector.com/v1
+  - url: https://omniwealth-connector.onrender.com/v1
 paths:
   /portfolio/summary:
     get:
