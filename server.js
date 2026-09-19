@@ -69,8 +69,21 @@ function verifyToken(req, res, next) {
 }
 
 // ---- Shared aggregation logic ----
-function summarizePortfolio() {
-  const { currency, accounts } = loadPortfolio();
+async function summarizePortfolio() {
+  // Prefer live Plaid holdings when a brokerage is linked; fall back to seed data.
+  let currency = "USD";
+  let accounts = loadPortfolio().accounts;
+  let live = false;
+  if (plaidAccessToken) {
+    try {
+      const plaid = await loadPlaidPortfolio();
+      currency = plaid.currency;
+      accounts = plaid.accounts;
+      live = true;
+    } catch (err) {
+      console.error("plaid holdings error, using seed data:", err.message);
+    }
+  }
 
   // Freemium gating: free plan only aggregates the first N accounts
   const visibleAccounts =
@@ -97,6 +110,7 @@ function summarizePortfolio() {
     byClass,
     total,
     plan: PLAN,
+    data_source: live ? "plaid" : "seed",
     accounts_included: visibleAccounts.length,
     accounts_excluded: excludedCount > 0 ? excludedCount : 0,
     upgrade_available: PLAN !== "paid" && excludedCount > 0,
@@ -110,22 +124,24 @@ function round2(n) {
 // ---- Endpoints ----
 
 // GET /v1/portfolio/summary — total net worth + asset class breakdown
-app.get("/v1/portfolio/summary", verifyToken, (req, res) => {
+app.get("/v1/portfolio/summary", verifyToken, async (req, res) => {
   try {
     const {
       total_net_worth,
       currency,
       allocations,
       plan,
+      data_source,
       accounts_included,
       accounts_excluded,
       upgrade_available,
-    } = summarizePortfolio();
+    } = await summarizePortfolio();
     res.json({
       total_net_worth,
       currency,
       allocations,
       plan,
+      data_source,
       accounts_included,
       accounts_excluded,
       upgrade_available,
@@ -137,9 +153,9 @@ app.get("/v1/portfolio/summary", verifyToken, (req, res) => {
 });
 
 // GET /v1/portfolio/drift — compare current weights vs targets, recommend rebalances
-app.get("/v1/portfolio/drift", verifyToken, (req, res) => {
+app.get("/v1/portfolio/drift", verifyToken, async (req, res) => {
   try {
-    const { total_net_worth, byClass, total, plan } = summarizePortfolio();
+    const { total_net_worth, byClass, total, plan } = await summarizePortfolio();
 
     const recommendations = [];
     for (const [asset_class, target] of Object.entries(TARGET_ALLOCATION)) {
@@ -172,6 +188,184 @@ app.get("/v1/portfolio/drift", verifyToken, (req, res) => {
     console.error("drift error:", err.message);
     res.status(500).json({ error: "Failed to analyze portfolio drift." });
   }
+});
+
+// ---- Plaid integration (live brokerage aggregation) ----
+const { Configuration, PlaidApi, PlaidEnvironments } = require("plaid");
+
+const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID || "";
+const PLAID_SECRET = process.env.PLAID_SECRET || "";
+const PLAID_ENV = (process.env.PLAID_ENV || "sandbox").toLowerCase();
+
+const plaidConfig = new Configuration({
+  basePath:
+    PLAID_ENV === "production"
+      ? PlaidEnvironments.production
+      : PLAID_ENV === "development"
+        ? PlaidEnvironments.development
+        : PlaidEnvironments.sandbox,
+  baseOptions: {
+    headers: { "PLAID-CLIENT-ID": PLAID_CLIENT_ID, "PLAID-SECRET": PLAID_SECRET },
+  },
+});
+const plaidClient = new PlaidApi(plaidConfig);
+
+// PROTOTYPE: single linked item kept in memory. Production needs per-user
+// encrypted access-token storage in a database.
+let plaidAccessToken = process.env.PLAID_ACCESS_TOKEN || null;
+
+function plaidConfigured() {
+  return Boolean(PLAID_CLIENT_ID && PLAID_SECRET);
+}
+
+// Map a Plaid security type to one of our three asset-class buckets.
+function plaidAssetClass(securityType) {
+  const t = (securityType || "").toLowerCase();
+  if (t.includes("crypto")) return "Crypto";
+  if (
+    t.includes("equity") ||
+    t.includes("etf") ||
+    t.includes("mutual") ||
+    t.includes("index") ||
+    t.includes("stock")
+  )
+    return "Equities";
+  return "Real Estate & Alternatives";
+}
+
+async function loadPlaidPortfolio() {
+  const { data } = await plaidClient.investmentsHoldingsGet({
+    access_token: plaidAccessToken,
+  });
+  const securities = new Map((data.securities || []).map((s) => [s.security_id, s]));
+  const accounts = new Map();
+
+  for (const h of data.holdings || []) {
+    const sec = securities.get(h.security_id) || {};
+    const assetClass = plaidAssetClass(sec.type);
+    const value = Number(h.institution_value || 0);
+    const acct = accounts.get(h.account_id) || {
+      name: "",
+      byClass: new Map(),
+    };
+    acct.byClass.set(assetClass, (acct.byClass.get(assetClass) || 0) + value);
+    accounts.set(h.account_id, acct);
+  }
+
+  const plaidAccounts = new Map((data.accounts || []).map((a) => [a.account_id, a]));
+  const result = [];
+  for (const [accountId, acct] of accounts) {
+    const info = plaidAccounts.get(accountId) || {};
+    // Predominant asset class by value becomes the account's class.
+    let topClass = "Equities";
+    let topValue = -1;
+    for (const [cls, v] of acct.byClass) {
+      if (v > topValue) {
+        topValue = v;
+        topClass = cls;
+      }
+    }
+    const total = [...acct.byClass.values()].reduce((s, v) => s + v, 0);
+    result.push({
+      name: info.name || info.official_name || "Brokerage account",
+      asset_class: topClass,
+      value: round2(total),
+    });
+  }
+  return { currency: "USD", accounts: result, live: true };
+}
+
+// POST /v1/plaid/link-token — create a Plaid Link token for the connect flow
+app.post("/v1/plaid/link-token", verifyToken, async (req, res) => {
+  if (!plaidConfigured()) {
+    return res.status(503).json({ error: "Plaid is not configured on this service." });
+  }
+  try {
+    const { data } = await plaidClient.linkTokenCreate({
+      user: { client_user_id: "omniwealth-user" },
+      client_name: "OmniWealth",
+      products: ["investments"],
+      country_codes: ["US"],
+      language: "en",
+    });
+    res.json({ link_token: data.link_token, expiration: data.expiration });
+  } catch (err) {
+    console.error("link-token error:", err.message);
+    res.status(500).json({ error: "Failed to create Plaid link token." });
+  }
+});
+
+// POST /v1/plaid/exchange — trade a Link public_token for an access token
+app.post("/v1/plaid/exchange", verifyToken, async (req, res) => {
+  if (!plaidConfigured()) {
+    return res.status(503).json({ error: "Plaid is not configured on this service." });
+  }
+  const publicToken = req.body && req.body.public_token;
+  if (!publicToken) {
+    return res.status(400).json({ error: "public_token is required." });
+  }
+  try {
+    const { data } = await plaidClient.itemPublicTokenExchange({
+      public_token: publicToken,
+    });
+    plaidAccessToken = data.access_token; // prototype: in-memory (see note above)
+    res.json({ linked: true, item_id: data.item_id });
+  } catch (err) {
+    console.error("exchange error:", err.message);
+    res.status(500).json({ error: "Failed to exchange Plaid public token." });
+  }
+});
+
+// GET /v1/plaid/status — whether a brokerage is linked
+app.get("/v1/plaid/status", verifyToken, (req, res) => {
+  res.json({
+    plaid_configured: plaidConfigured(),
+    environment: PLAID_ENV,
+    linked: Boolean(plaidAccessToken),
+  });
+});
+
+// GET /connect — Plaid Link page for connecting a brokerage (sandbox-ready)
+app.get("/connect", (req, res) => {
+  res.type("html").send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OmniWealth — Connect brokerage</title>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script></head>
+<body style="font-family:system-ui,sans-serif;max-width:560px;margin:3rem auto;padding:0 1rem;line-height:1.6">
+<h1>Connect your brokerage</h1>
+<p>Link a brokerage account through Plaid. Your credentials go to your bank only —
+OmniWealth receives read-only access tokens.</p>
+<label>Connector bearer token<br>
+<input id="token" type="password" style="width:100%;padding:.6rem;margin:.4rem 0" placeholder="Paste your OmniWealth API token"></label><br>
+<button id="go" style="padding:.7rem 1.4rem;font-size:1rem;cursor:pointer">Connect brokerage</button>
+<p id="msg"></p>
+<script>
+const msg = (t) => document.getElementById('msg').textContent = t;
+document.getElementById('go').onclick = async () => {
+  const token = document.getElementById('token').value.trim();
+  if (!token) return msg('Enter your connector bearer token first.');
+  msg('Creating secure link session…');
+  const r = await fetch('/v1/plaid/link-token', {
+    method: 'POST', headers: { 'Authorization': 'Bearer ' + token }
+  });
+  if (!r.ok) return msg('Could not start link session (check your token).');
+  const { link_token } = await r.json();
+  const handler = Plaid.create({
+    token: link_token,
+    onSuccess: async (public_token) => {
+      msg('Exchanging token…');
+      const e = await fetch('/v1/plaid/exchange', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_token })
+      });
+      msg(e.ok ? 'Brokerage linked! Your portfolio summary now uses live data.' : 'Link failed during exchange.');
+    },
+    onExit: (err) => { if (err) msg('Link closed: ' + (err.error_message || err.error_code)); }
+  });
+  handler.open();
+};
+</script></body></html>`);
 });
 
 // Health check (unauthenticated by design)
